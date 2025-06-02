@@ -27,15 +27,15 @@ class BoosterWrapper(BaseEstimator):
             booster_learning_rate: float,
             booster_learning_rate_decay: float,
             regularization_coef: float,
-
             epochs: int,
             batch_size: int,
             learning_rate: float,
             loss: nn.Module,
             verbose: bool = False,
-
             split_function: Optional[nn.Module] = None,
             t: float = 1,
+            compile: bool = True,
+            compile_params: dict = dict(fullgraph=True)
     ) -> None:
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -43,18 +43,16 @@ class BoosterWrapper(BaseEstimator):
         self.n_estimators = n_estimators
         self.booster_learning_rate = booster_learning_rate
         self.booster_learning_rate_decay = booster_learning_rate_decay
-
         self.regularization_coef = regularization_coef
-
         self.split_function = split_function
         self.t = t
-
         self.epochs = epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.verbose = verbose
-
         self.loss = loss
+        self.compile = compile
+        self.compile_params = compile_params
 
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -73,7 +71,10 @@ class BoosterWrapper(BaseEstimator):
             split_function=self.split_function,
             t=self.t,
         )
-        self.base.compile(fullgraph=True)
+        if self.compile:
+            self.base.compile(**self.compile_params)
+            self.base.fit_forward = torch.compile(self.base.fit_forward, **self.compile_params)
+
         self.base.to(self.device)
 
     def fit(
