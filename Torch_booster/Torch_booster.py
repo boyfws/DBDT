@@ -57,15 +57,23 @@ class Booster(nn.Module):
         )
         self.models = nn.ModuleList([copy.deepcopy(estimator) for _ in range(self.n_estimators)])
 
+    @torch._dynamo.disable
+    def create_pred(self, X):
+        device = next(self.parameters()).device
+        return torch.zeros((X.size(0), self.output_dim), device=device, dtype=torch.float32, requires_grad=True)
+
+    @torch._dynamo.disable
+    def update_pred(
+            self,
+            pred: torch.Tensor,
+            m: int,
+            update: torch.Tensor
+    ):
+        pred = (pred + self.lr[m] * update).detach().requires_grad_(True)
+        return pred
+
     def fit_forward(self, X: torch.Tensor, y: torch.Tensor, criterion):
-        with torch._dynamo.disable():
-            device = next(self.parameters()).device
-            pred = torch.zeros(
-                (X.size(0), self.output_dim),
-                device=device,
-                dtype=torch.float32,
-                requires_grad=True
-            )
+        pred = self.create_pred(X)
 
         for m in range(self.n_estimators):
             loss = criterion(pred, y)
@@ -81,8 +89,7 @@ class Booster(nn.Module):
 
             loss.backward()
 
-            with torch._dynamo.disable():
-                pred = (pred + self.lr[m] * update).detach().requires_grad_(True)
+            pred = self.update_pred(pred, m, update)
 
         return pred
 
