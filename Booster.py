@@ -72,7 +72,8 @@ class BoosterWrapper(BaseEstimator):
             t=self.t,
         )
         if self.compile:
-            self.base.compile(**self.compile_params)
+            for el in self.base.models:
+                el.compile(**self.compile_params)
 
         self.base.to(self.device)
 
