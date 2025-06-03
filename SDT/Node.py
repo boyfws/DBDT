@@ -78,6 +78,7 @@ class Node(nn.Module):
 
             return (1 - p) * left_pred + p * right_pred, reg_term
 
+    @torch._dynamo.disable
     def set_regularization(self, regularization: bool):
         self.regularization = regularization
         if hasattr(self, 'left_leaf'):
@@ -86,6 +87,7 @@ class Node(nn.Module):
         if hasattr(self, 'right_leaf'):
             self.right_leaf.set_regularization(regularization)
 
+    @torch._dynamo.disable
     def eval(self):
         self.regularization = False
         super().eval()

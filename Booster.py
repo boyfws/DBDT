@@ -73,7 +73,6 @@ class BoosterWrapper(BaseEstimator):
         )
         if self.compile:
             self.base.compile(**self.compile_params)
-            self.base.fit_forward = torch.compile(self.base.fit_forward, **self.compile_params)
 
         self.base.to(self.device)
 

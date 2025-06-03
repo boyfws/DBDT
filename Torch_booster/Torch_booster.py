@@ -7,8 +7,6 @@ import copy
 from typing import Optional
 from SDT import SDT
 
-from .Compute_grad import compute_loss_gradient
-
 
 class Booster(nn.Module):
     def __init__(self,
@@ -60,12 +58,19 @@ class Booster(nn.Module):
         self.models = nn.ModuleList([copy.deepcopy(estimator) for _ in range(self.n_estimators)])
 
     def fit_forward(self, X: torch.Tensor, y: torch.Tensor, criterion):
-        pred = torch.zeros(
-            (X.size(0), self.output_dim)
-        ).float().to(next(self.parameters()).device)
+        with torch._dynamo.disable():
+            device = next(self.parameters()).device
+            pred = torch.zeros(
+                (X.size(0), self.output_dim),
+                device=device,
+                dtype=torch.float32,
+                requires_grad=True
+            )
 
         for m in range(self.n_estimators):
-            grad = compute_loss_gradient(pred, y, criterion).detach()
+            loss = criterion(pred, y)
+
+            grad = torch.autograd.grad(loss, pred, create_graph=False)[0]
 
             update, reg_term = self.models[m](X)
 
@@ -76,7 +81,8 @@ class Booster(nn.Module):
 
             loss.backward()
 
-            pred = (pred + self.lr[m].item() * update).detach()
+            with torch._dynamo.disable():
+                pred = (pred + self.lr[m] * update).detach().requires_grad_(True)
 
         return pred
 
