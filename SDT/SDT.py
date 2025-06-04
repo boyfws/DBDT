@@ -75,9 +75,9 @@ class SDT(nn.Module):
 
                 p = p.unsqueeze(-1)  # [batch_size, 1, 1]
 
-                s = slice_start[i].item()
-                h = slice_half[i].item()
-                e = slice_end[i].item()
+                s = slice_start[i]
+                h = slice_half[i]
+                e = slice_end[i]
 
                 chunk_left = value[:, s:h]  # shape: [B, W, D]
                 chunk_right = value[:, h:e]  # shape: [B, W, D]
