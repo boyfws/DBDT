@@ -40,6 +40,38 @@ class SDT(nn.Module):
         )
         nn.init.xavier_uniform_(self.value)
 
+        self.model_idx_start =[
+            2 ** d - 1 for d in range(self.depth)
+        ]
+
+        self.model_idx_end = [
+            2 ** (d + 1) - 1 for d in range(self.depth)
+        ]
+
+        num_models = [
+            self.model_idx_end[d] - self.model_idx_start[d]
+            for d in range(self.depth)
+        ]
+
+        split_size = [
+            self.value.size(0) // num_models[d] for d in range(self.depth)
+        ]
+
+        self.slice_start = [
+            [i * split_size[d] for i in range(num_models[d])]
+            for d in range(self.depth)
+        ]
+
+        self.slice_half = [
+            [self.slice_start[d][i] + split_size[d] // 2 for i in range(num_models[d])]
+            for d in range(self.depth)
+        ]
+
+        self.slice_end = [
+            [i * split_size[d] for i in range(1, num_models[d] + 1)]
+            for d in range(self.depth)
+        ]
+
     def forward(self, x):
         value = self.value.unsqueeze(0).expand(x.size(0), -1, -1).clone()  # (batch_size, a, b)
 
@@ -48,20 +80,12 @@ class SDT(nn.Module):
         reg_term = torch.tensor(0.0, device=device)
 
         for d in range(self.depth):  # Iterate through depth
-            start = 2 ** d - 1
-            end = 2 ** (d + 1) - 1
+            start = self.model_idx_start[d]
+            end = self.model_idx_end[d]
 
-            num_models = end - start  # It is always a power of 2
-
-            split_size = self.value.size(0) / num_models
-
-            # This operation returns int, as self.value.size(0) == 2 ** depth
-            # and num_models is a power of 2
-            split_size = int(split_size)
-
-            slice_start = torch.arange(num_models, dtype=torch.long) * split_size
-            slice_half = slice_start + split_size // 2
-            slice_end = torch.arange(1, num_models + 1, dtype=torch.long) * split_size
+            slice_start = self.slice_start[d]
+            slice_half = self.slice_half[d]
+            slice_end = self.slice_end[d]
 
             for i, model_idx in enumerate(range(start, end)):
                 p = self.splitters[model_idx](x)  # [batch_size, 1]
