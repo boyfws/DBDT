@@ -108,7 +108,7 @@ class SDT(nn.Module):
         accum_probs = accum_probs.unsqueeze(-1) # [B, L, 1]
 
         sign = torch.sign(self.value)  # [L, D]
-        logval = torch.log(torch.clamp(self.value.abs(), min=1e-10))  # [B, L, D]
+        logval = torch.log(torch.clamp(self.value.abs().clone(), min=1e-10))  # [B, L, D]
 
         ret = logval + accum_probs  # [B, L, D]
 
