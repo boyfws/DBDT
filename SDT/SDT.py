@@ -19,21 +19,16 @@ class SDT(nn.Module):
     ) -> None:
         super().__init__()
         if split_function is None:
-            split_function_arg = BaseSplitter(input_dim, t)
+            split_function_arg = BaseSplitter(input_dim, t, depth)
         else:
-            split_function_arg = split_function
+            split_function_arg = split_function(input_dim, t, depth)
 
         assert depth >= 1
 
         self.depth = depth
         self.regularization = regularization
 
-
-        self.splitters = nn.ModuleList(
-            [
-                copy.deepcopy(split_function_arg) for _ in range(2 ** depth - 1)
-            ]
-        )
+        self.splitter = split_function_arg
 
         self.value = nn.Parameter(
                 torch.empty(2 ** depth, output_dim)
@@ -75,7 +70,9 @@ class SDT(nn.Module):
     def forward(self, x):
         device = x.device
 
-        probs = torch.zeros(
+        predicted_probs = self.splitter(x)
+
+        accum_probs = torch.zeros(
             (x.size(0), self.value.size(0)),
             device=device,
             dtype=torch.float,
@@ -92,7 +89,7 @@ class SDT(nn.Module):
             slice_end = self.slice_end[d]
 
             for i, model_idx in enumerate(range(start, end)):
-                p = self.splitters[model_idx](x)  # [batch_size, 1]
+                p = predicted_probs[:, model_idx].unsqueeze(-1)  # [batch_size, 1]
 
                 if self.regularization:
                     reg_term += -0.5 * (
@@ -105,15 +102,15 @@ class SDT(nn.Module):
                 h = slice_half[i]
                 e = slice_end[i]
 
-                probs[:, s:h] += torch.log(torch.clamp(p, min=1e-5))
-                probs[:, h:e] += torch.log(torch.clamp(1 - p, min=1e-5))
+                accum_probs[:, s:h] += torch.log(torch.clamp(p, min=1e-5))
+                accum_probs[:, h:e] += torch.log(torch.clamp(1 - p, min=1e-5))
 
-        probs = probs.unsqueeze(-1) # [B, L, 1]
+        accum_probs = accum_probs.unsqueeze(-1) # [B, L, 1]
 
         sign = torch.sign(self.value)  # [L, D]
         logval = torch.log(torch.clamp(self.value.abs(), min=1e-10))  # [B, L, D]
 
-        ret = logval + probs # [B, L, D]
+        ret = logval + accum_probs  # [B, L, D]
 
         pos_mask = (sign > 0).float()
         neg_mask = (sign < 0).float()
