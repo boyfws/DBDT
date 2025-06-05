@@ -17,4 +17,4 @@ class BaseSplitter(nn.Module):
         x = self.mlp(x)
         x = self.t * x
 
-        return F.sigmoid(x)  # [Batch_size,]
+        return F.sigmoid(x)  # [Batch_size, 1]

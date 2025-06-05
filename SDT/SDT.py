@@ -73,9 +73,13 @@ class SDT(nn.Module):
         ]
 
     def forward(self, x):
-        value = self.value.unsqueeze(0).expand(x.size(0), -1, -1).clone()  # (batch_size, a, b)
-
         device = x.device
+
+        probs = torch.zeros(
+            (x.size(0), self.value.size(0)),
+            device=device,
+            dtype=torch.float,
+        )
 
         reg_term = torch.tensor(0.0, device=device)
 
@@ -97,19 +101,27 @@ class SDT(nn.Module):
                         )
                     ).mean()
 
-                p = p.unsqueeze(-1)  # [batch_size, 1, 1]
-
                 s = slice_start[i]
                 h = slice_half[i]
                 e = slice_end[i]
 
-                chunk_left = value[:, s:h]  # shape: [B, W, D]
-                chunk_right = value[:, h:e]  # shape: [B, W, D]
+                probs[:, s:h] += torch.log(torch.clamp(p, min=1e-5))
+                probs[:, h:e] += torch.log(torch.clamp(1 - p, min=1e-5))
 
-                value[:, s:h] = chunk_left.clone() * p
-                value[:, h:e] = chunk_right.clone() * (1 - p)
+        probs = probs.unsqueeze(-1) # [B, L, 1]
 
-        value = value.sum(dim=1)
+        sign = torch.sign(self.value)  # [L, D]
+        logval = torch.log(torch.clamp(self.value.abs(), min=1e-10))  # [B, L, D]
+
+        ret = logval + probs # [B, L, D]
+
+        pos_mask = (sign > 0).float()
+        neg_mask = (sign < 0).float()
+
+        log_pos = torch.logsumexp(ret + torch.log(pos_mask + 1e-12), dim=1)
+        log_neg = torch.logsumexp(ret + torch.log(neg_mask + 1e-12), dim=1)
+
+        value = torch.exp(log_pos) - torch.exp(log_neg)
 
         if not self.regularization:
             reg_term = None
