@@ -24,6 +24,7 @@ class BoosterWrapper(BaseEstimator):
         batch_size: int,
         learning_rate_value: float,
         learning_rate_splitter: float,
+        reg_lambda: float,
         loss: nn.Module,  # Reduction == sum
         verbose: bool = False,
         compile: bool = True,
@@ -43,6 +44,7 @@ class BoosterWrapper(BaseEstimator):
         self.loss = loss
         self.compile = compile
         self.compile_params = compile_params
+        self.reg_lambda = reg_lambda
 
         self.device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -57,6 +59,7 @@ class BoosterWrapper(BaseEstimator):
                 n_estimators=self.n_estimators,
                 learning_rate=self.booster_learning_rate,
                 regularization_coef=self.regularization_coef,
+                reg_lambda=self.reg_lambda,
             )
             if self.compile:
                 for el in self.base.models:

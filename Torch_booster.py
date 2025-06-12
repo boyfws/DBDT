@@ -16,6 +16,7 @@ class Booster(nn.Module):
         n_estimators: int,
         learning_rate: float,
         regularization_coef: float = 0.0,
+        reg_lambda: float = 1e-5,
     ) -> None:
 
         super().__init__()
@@ -24,6 +25,7 @@ class Booster(nn.Module):
         self.depth = depth
         self.regularization_coef = regularization_coef
         self.n_estimators = n_estimators
+        self.reg_lambda = reg_lambda
 
         self._create_models(
             regularization_coef=regularization_coef,
@@ -84,16 +86,23 @@ class Booster(nn.Module):
         for m in range(self.n_estimators):
             loss = criterion(pred, y)
 
-            grad = torch.autograd.grad(loss, pred, create_graph=False)[0]
+            grad = torch.autograd.grad(loss, pred, create_graph=True)[0]
+
+            hess = torch.autograd.grad(grad.sum(), pred)[0]  # Assume hess >= 0
 
             update, reg_term = self.models[m](X, self.left_mask, self.right_mask)
 
-            loss = F.mse_loss(update, -grad)
+            with torch.no_grad():
+                hess_clipped = hess.clamp(min=1e-3)
+
+                target = -grad / (hess_clipped + self.reg_lambda)
+
+            grad_loss = F.mse_loss(update, target)
 
             if reg_term is not None and self.regularization_coef != 0.0:
-                loss += self.regularization_coef * reg_term
+                grad_loss += self.regularization_coef * reg_term
 
-            loss.backward()
+            grad_loss.backward()
 
             pred = self.update_pred(pred, update)
 
