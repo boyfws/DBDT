@@ -16,7 +16,6 @@ class Booster(nn.Module):
         n_estimators: int,
         learning_rate: float,
         regularization_coef: float = 0.0,
-        t: float = 1,
     ) -> None:
 
         super().__init__()
@@ -28,7 +27,6 @@ class Booster(nn.Module):
 
         self._create_models(
             regularization_coef=regularization_coef,
-            t=t,
         )
         self.learning_rate = learning_rate
         self._build_masks(depth=depth)
@@ -54,7 +52,7 @@ class Booster(nn.Module):
         self.register_buffer("left_mask", left_mask)
         self.register_buffer("right_mask", right_mask)
 
-    def _create_models(self, regularization_coef: float, t: float = 1) -> None:
+    def _create_models(self, regularization_coef: float) -> None:
         regularization = regularization_coef != 0.0
 
         estimator = SDT(
@@ -62,13 +60,11 @@ class Booster(nn.Module):
             output_dim=self.output_dim,
             depth=self.depth,
             regularization=regularization,
-            t=t,
         )
         self.models = nn.ModuleList(
             [copy.deepcopy(estimator) for _ in range(self.n_estimators)]
         )
 
-    @torch._dynamo.disable
     def create_pred(self, X):
         device = next(self.parameters()).device
         return torch.zeros(
@@ -78,7 +74,6 @@ class Booster(nn.Module):
             requires_grad=True,
         )
 
-    @torch._dynamo.disable
     def update_pred(self, pred: torch.Tensor, update: torch.Tensor):
         pred = (pred + self.learning_rate * update).detach().requires_grad_(True)
         return pred

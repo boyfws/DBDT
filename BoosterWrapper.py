@@ -22,10 +22,10 @@ class BoosterWrapper(BaseEstimator):
         regularization_coef: float,
         epochs: int,
         batch_size: int,
-        learning_rate: float,
+        learning_rate_value: float,
+        learning_rate_splitter: float,
         loss: nn.Module,  # Reduction == sum
         verbose: bool = False,
-        t: float = 1,
         compile: bool = True,
         compile_params: dict = dict(fullgraph=True),
     ) -> None:
@@ -35,10 +35,10 @@ class BoosterWrapper(BaseEstimator):
         self.n_estimators = n_estimators
         self.booster_learning_rate = booster_learning_rate
         self.regularization_coef = regularization_coef
-        self.t = t
         self.epochs = epochs
         self.batch_size = batch_size
-        self.learning_rate = learning_rate
+        self.learning_rate_value = learning_rate_value
+        self.learning_rate_splitter = learning_rate_splitter
         self.verbose = verbose
         self.loss = loss
         self.compile = compile
@@ -49,20 +49,33 @@ class BoosterWrapper(BaseEstimator):
         )
 
     def _build_model(self, input_dim: int) -> None:
-        self.base = Booster(
-            input_dim=input_dim,
-            output_dim=self.output_dim,
-            depth=self.depth,
-            n_estimators=self.n_estimators,
-            learning_rate=self.booster_learning_rate,
-            regularization_coef=self.regularization_coef,
-            t=self.t,
-        )
-        if self.compile:
-            for el in self.base.models:
-                el.compile(**self.compile_params)
+        if not hasattr(self, "base"):
+            self.base = Booster(
+                input_dim=input_dim,
+                output_dim=self.output_dim,
+                depth=self.depth,
+                n_estimators=self.n_estimators,
+                learning_rate=self.booster_learning_rate,
+                regularization_coef=self.regularization_coef,
+            )
+            if self.compile:
+                for el in self.base.models:
+                    el.compile(**self.compile_params)
 
-        self.base.to(self.device)
+            self.base.to(self.device)
+            val_params = [el.value for el in self.base.models]
+            splitter_params = [
+                p for el in self.base.models for p in el.splitter.parameters()
+            ]
+
+            self.optim = torch.optim.Adam(
+                [
+                    {"params": val_params, "lr": self.learning_rate_value},
+                    {"params": splitter_params, "lr": self.learning_rate_splitter},
+                ]
+            )
+        else:
+            self.base.train()
 
     def fit(self, X: npt.NDArray, y: npt.NDArray) -> None:
         X = torch.tensor(X).float()
@@ -81,7 +94,6 @@ class BoosterWrapper(BaseEstimator):
             prefetch_factor=4,
         )
 
-        self.optim = torch.optim.Adam(self.base.parameters(), lr=self.learning_rate)
         epoch_len = len(str(self.epochs))
 
         for epoch in range(self.epochs):
@@ -131,9 +143,8 @@ class BoosterWrapper(BaseEstimator):
                             }
                         )
 
-        self.base.eval()
-
     def predict(self, X: npt.NDArray) -> np.ndarray:
+        self.base.eval()
         X = torch.tensor(X).float()
 
         dataset = TensorDataset(X)

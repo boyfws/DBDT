@@ -1,20 +1,18 @@
 import torch.nn.functional as F
 from torch import nn
+import torch
 
 
 class BaseSplitter(nn.Module):
-    def __init__(self, input_dim: int, t: float, depth: int):
+    def __init__(self, input_dim: int, depth: int):
         super().__init__()
-        self.t = t
+        self.raw_t = nn.Parameter(torch.empty(1, 2**depth - 1))
+        nn.init.xavier_uniform_(self.t)
 
-        self.mlp = nn.Sequential(
-            nn.Linear(input_dim, 10 * (2**depth - 1)),
-            nn.GELU(),
-            nn.Linear(10 * (2**depth - 1), 2**depth - 1),
-        )
+        self.log_reg = nn.Linear(input_dim, 2**depth - 1)
 
     def forward(self, x):
-        x = self.mlp(x)
-        x = self.t * x
-
-        return F.sigmoid(x)  # [Batch_size, Output_dim]
+        t = F.softplus(self.raw_t)  # always > 0
+        x = self.log_reg(x)
+        x = t * x
+        return torch.sigmoid(x)

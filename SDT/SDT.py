@@ -11,7 +11,6 @@ class SDT(nn.Module):
         output_dim: int,
         depth: int,
         regularization: bool = True,
-        t: float = 1,
     ) -> None:
         super().__init__()
         assert depth >= 1
@@ -19,7 +18,7 @@ class SDT(nn.Module):
         self.depth = depth
         self.regularization = regularization
 
-        self.splitter = BaseSplitter(input_dim, t, depth)
+        self.splitter = BaseSplitter(input_dim, depth)
 
         self.value = nn.Parameter(torch.empty(2**depth, output_dim))
         nn.init.xavier_uniform_(self.value)
@@ -73,10 +72,5 @@ class SDT(nn.Module):
         value = torch.exp(log_pos) - torch.exp(log_neg)
 
         return value, reg_term
-
-    def eval(self):
-        self.regularization = False
-        super().eval()
-
 
 
